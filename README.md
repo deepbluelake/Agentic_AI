@@ -1,5 +1,9 @@
 # RTDS - Real-Time Decision Support System
 
+# We initially attempted to upload the video, but due to its large file size exceeding GitHub's limit, we later replaced it with an external link.
+
+Video Demo Link 🔗 - https://drive.google.com/drive/folders/1mWOE4Ilz0lBpfWM9u8FQQJO6Cr-HmcM3?usp=sharing
+
 A FastAPI-based application that provides natural language processing capabilities for cloud infrastructure management.
 
 ## Features
