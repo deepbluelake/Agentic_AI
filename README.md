@@ -10,6 +10,18 @@ A FastAPI-based application that provides natural language processing capabiliti
 - RESTful API endpoints for cloud resource management
 - User authentication and session management
 
+## Architecture
+
+![RTDS Architecture](images/architecture.png)
+
+The system architecture consists of the following components:
+
+- FastAPI backend server handling HTTP requests
+- Groq AI integration for natural language processing
+- SQLite database for operation logging
+- OpenStack integration for cloud operations
+- Frontend interface for user interaction
+
 ## Prerequisites
 
 - Python 3.8+
