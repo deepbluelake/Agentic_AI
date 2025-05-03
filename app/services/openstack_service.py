@@ -176,30 +176,149 @@ class OpenStackService:
 
     def get_usage(self) -> Dict[str, Any]:
         try:
-            limits = self.conn.compute.get_limits().absolute
-            servers = list(self.conn.compute.servers())
-            volumes = list(self.conn.block_storage.volumes())
-
-            vcpu_used = sum(getattr(server.flavor, 'vcpus', 0) for server in servers)
-            ram_used = sum(getattr(server.flavor, 'ram', 0) for server in servers)
-            volume_count = len(volumes)
-            total_storage = sum(getattr(volume, 'size', 0) for volume in volumes)
-
-            result = {
-                "vCPU_used": vcpu_used,
-                "RAM_used": ram_used,
-                "volumes_used": volume_count,
-                "total_storage": total_storage,
-                "limits": {
-                    "max_vCPU": getattr(limits, 'max_total_cores', 'unknown'),
-                    "max_RAM": getattr(limits, 'max_total_ram_size', 'unknown'),
-                    "max_volumes": getattr(limits, 'max_total_volumes', 'unknown'),
-                    "max_storage": getattr(limits, 'max_total_volume_gigabytes', 'unknown')
+            import requests
+            import json
+            
+            # Step 1: Authenticate and get token
+            auth_url = "https://api-ap-south-mum-1.openstack.acecloudhosting.com:5000/v3/auth/tokens"
+            auth_data = {
+                "auth": {
+                    "identity": {
+                        "methods": ["password"],
+                        "password": {
+                            "user": {
+                                "domain": {"name": "Default"},
+                                "name": "Hackathon_AIML_1",
+                                "password": "Hackathon_AIML_1@567"
+                            }
+                        }
+                    }
                 }
             }
-
+            
+            auth_response = requests.post(
+                auth_url,
+                headers={"Content-Type": "application/json"},
+                data=json.dumps(auth_data),
+                verify=True
+            )
+            
+            if auth_response.status_code != 201:
+                raise Exception(f"Authentication failed: {auth_response.text}")
+                
+            token = auth_response.headers.get('X-Subject-Token')
+            
+            # Get project ID from token response if available
+            project_id = None
+            try:
+                auth_data = auth_response.json()
+                if 'token' in auth_data and 'project' in auth_data['token']:
+                    project_id = auth_data['token']['project']['id']
+            except Exception:
+                pass
+            
+            # Use hardcoded project ID if not available from token
+            if not project_id:
+                project_id = "a02b14bcfca64e44bd68f2d00d8555b5"
+            
+            # Step 2: Get compute limits
+            compute_url = "https://api-ap-south-mum-1.openstack.acecloudhosting.com:8774/v2.1/limits"
+            compute_response = requests.get(
+                compute_url,
+                headers={"X-Auth-Token": token}
+            )
+            
+            if compute_response.status_code != 200:
+                raise Exception(f"Failed to get compute limits: {compute_response.text}")
+                
+            compute_data = compute_response.json()
+            limits = compute_data.get('limits', {}).get('absolute', {})
+            
+            # Step 3: Get servers data
+            servers_url = "https://api-ap-south-mum-1.openstack.acecloudhosting.com:8774/v2.1/servers/detail"
+            servers_response = requests.get(
+                servers_url,
+                headers={"X-Auth-Token": token}
+            )
+            
+            servers_data = []
+            if servers_response.status_code == 200:
+                servers_data = servers_response.json().get('servers', [])
+            
+            # Step 4: Get volume data
+            volumes_url = f"https://api-ap-south-mum-1.openstack.acecloudhosting.com:8776/v3/{project_id}/volumes/detail"
+            volumes_response = requests.get(
+                volumes_url,
+                headers={"X-Auth-Token": token}
+            )
+            
+            volumes_data = []
+            total_storage_gb = 0
+            if volumes_response.status_code == 200:
+                volumes_data = volumes_response.json().get('volumes', [])
+                total_storage_gb = sum(volume.get('size', 0) for volume in volumes_data)
+            
+            # Process data to get usage information
+            server_count = len(servers_data)
+            active_servers = sum(1 for server in servers_data if server.get('status') == 'ACTIVE')
+            
+            # Format compute quotas
+            vcpus_used = limits.get('totalCoresUsed', 0)
+            vcpus_limit = limits.get('maxTotalCores', 'unlimited')
+            ram_used_mb = limits.get('totalRAMUsed', 0)
+            ram_limit_mb = limits.get('maxTotalRAMSize', 'unlimited')
+            
+            # Convert RAM to more readable format
+            ram_used_gb = ram_used_mb / 1024 if isinstance(ram_used_mb, (int, float)) else 0
+            ram_limit_gb = ram_limit_mb / 1024 if isinstance(ram_limit_mb, (int, float)) else 'unlimited'
+            
+            # Prepare formatted result
+            result = {
+                "summary": {
+                    "total_servers": server_count,
+                    "active_servers": active_servers,
+                    "total_vcpus_used": vcpus_used,
+                    "total_ram_used_gb": round(ram_used_gb, 2),
+                    "total_volumes": len(volumes_data),
+                    "total_storage_gb": total_storage_gb
+                },
+                "compute_quotas": {
+                    "vcpus": {
+                        "used": vcpus_used,
+                        "limit": vcpus_limit
+                    },
+                    "ram_gb": {
+                        "used": round(ram_used_gb, 2),
+                        "limit": round(ram_limit_gb, 2) if isinstance(ram_limit_gb, (int, float)) else ram_limit_gb
+                    },
+                    "instances": {
+                        "used": limits.get('totalInstancesUsed', 0),
+                        "limit": limits.get('maxTotalInstances', 'unlimited')
+                    }
+                },
+                "servers": [
+                    {
+                        "name": server.get('name', 'unknown'),
+                        "id": server.get('id', 'unknown'),
+                        "status": server.get('status', 'unknown'),
+                        "flavor": server.get('flavor', {}).get('original_name', 'unknown'),
+                        "created": server.get('created', 'unknown')
+                    } for server in servers_data[:5]  # Limit to first 5 servers
+                ],
+                "volumes": [
+                    {
+                        "name": volume.get('name', 'unknown'),
+                        "id": volume.get('id', 'unknown'),
+                        "size_gb": volume.get('size', 0),
+                        "status": volume.get('status', 'unknown'),
+                        "attached_to": [attachment.get('server_id') for attachment in volume.get('attachments', [])]
+                    } for volume in volumes_data[:5]  # Limit to first 5 volumes
+                ]
+            }
+            
             self.log_operation("QUERY_USAGE", "project", {}, "SUCCESS")
             return result
+            
         except Exception as e:
             self.log_operation("QUERY_USAGE", "project", {}, "FAILED", str(e))
             raise Exception(f"Failed to get usage: {str(e)}")

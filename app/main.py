@@ -58,12 +58,14 @@ class ConfirmationRequest(BaseModel):
 # OpenStack connection
 def get_openstack_connection():
     conn = openstack.connect(
-        auth_url=os.getenv("https://api-ap-south-mum-1.openstack.acecloudhosting.com:9696"),
-        project_name="Agentic_AI",
+        auth_url="https://api-ap-south-mum-1.openstack.acecloudhosting.com:5000/v3",
         username="Hackathon_AIML_1",
         password="Hackathon_AIML_1@567",
-        user_domain_name=os.getenv("OS_USER_DOMAIN_NAME", "Default"),
-        project_domain_name=os.getenv("OS_PROJECT_DOMAIN_NAME", "Default"),
+        project_name="Agentic_AI",
+        user_domain_name="Default",
+        project_domain_id="default",
+        identity_api_version="3",
+        region_name="mum1"
     )
     return conn
 
@@ -223,8 +225,4 @@ async def get_usage(
         return openstack_service.get_usage()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
 
