@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic AI for Cloud Operations</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .chat-container {
+            height: 60vh;
+            overflow-y: auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .user-message {
+            background-color: #d1ecf1;
+            padding: 10px 15px;
+            border-radius: 15px;
+            margin-bottom: 10px;
+            max-width: 80%;
+            margin-left: auto;
+        }
+        .system-message {
+            background-color: #e2e3e5;
+            padding: 10px 15px;
+            border-radius: 15px;
+            margin-bottom: 10px;
+            max-width: 80%;
+        }
+        .confirmation-buttons {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Agentic AI for Cloud Operations</h1>
+        
+        <div class="chat-container" id="chatContainer">
+            <div class="system-message">
+                Welcome to Agentic AI for Cloud Operations. How can I help you manage your OpenStack infrastructure today?
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col">
+                <div class="input-group">
+                    <input type="text" id="userInput" class="form-control" placeholder="Ask anything about your cloud infrastructure...">
+                    <button class="btn btn-primary" id="sendButton">Send</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            <h5>Example queries:</h5>
+            <ul>
+                <li><a href="#" class="example-query">Create an S.4 VM named dev-box</a></li>
+                <li><a href="#" class="example-query">Resize dev-box to flavor M.8</a></li>
+                <li><a href="#" class="example-query">Delete the VM dev-box</a></li>
+                <li><a href="#" class="example-query">What's my project usage?</a></li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        let pendingRequestId = null;
+        
+        document.getElementById('sendButton').addEventListener('click', sendMessage);
+        document.getElementById('userInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Add event listeners to example queries
+        document.querySelectorAll('.example-query').forEach(item => {
+            item.addEventListener('click', function(e) {
+                e.preventDefault();
+                document.getElementById('userInput').value = this.textContent;
+                sendMessage();
+            });
+        });
+        
+        function sendMessage() {
+            const userInput = document.getElementById('userInput');
+            const text = userInput.value.trim();
+            
+            if (text) {
+                // Add user message to chat
+                addMessage(text, 'user');
+                userInput.value = '';
+                
+                // Send request to backend
+                fetch('/nl/process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Add system response to chat
+                    addMessage(data.response, 'system');
+                    
+                    // If confirmation is required, add confirmation buttons
+                    if (data.requires_confirmation) {
+                        pendingRequestId = data.request_id;
+                        addConfirmationButtons();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    addMessage('Sorry, there was an error processing your request.', 'system');
+                });
+            }
+        }
+        
+        function addMessage(text, sender) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = sender === 'user' ? 'user-message' : 'system-message';
+            messageDiv.textContent = text;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function addConfirmationButtons() {
+            const chatContainer = document.getElementById('chatContainer');
+            const buttonDiv = document.createElement('div');
+            buttonDiv.className = 'confirmation-buttons';
+            buttonDiv.innerHTML = `
+                <button class="btn btn-success btn-sm me-2" onclick="confirmAction(true)">Yes</button>
+                <button class="btn btn-danger btn-sm" onclick="confirmAction(false)">No</button>
+            `;
+            
+            const lastMessage = chatContainer.lastElementChild;
+            lastMessage.appendChild(buttonDiv);
+        }
+        
+        function confirmAction(confirmed) {
+            if (!pendingRequestId) return;
+            
+            // Remove confirmation buttons
+            document.querySelector('.confirmation-buttons').remove();
+            
+            // Send confirmation to backend
+            fetch('/nl/confirm', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    request_id: pendingRequestId,
+                    confirmed: confirmed
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Add system response to chat
+                addMessage(data.response || data.message, 'system');
+                pendingRequestId = null;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                addMessage('Sorry, there was an error processing your request.', 'system');
+                pendingRequestId = null;
+            });
+        }
+    </script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
