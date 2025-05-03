@@ -177,6 +177,103 @@ class NLPService:
             elif intent == "RESIZE_VM":
                 return f"Resized VM {result['name']} to flavor {result['flavor']}. Status: {result['status']}"
             elif intent == "QUERY_USAGE":
-                return f"Current usage: {result}"
+                # Format usage information nicely
+                summary = result.get('summary', {})
+                quotas = result.get('compute_quotas', {})
+                servers = result.get('servers', [])
+                volumes = result.get('volumes', [])
+                
+                response = "**PROJECT USAGE SUMMARY**\n\n"
+                
+                # Main Summary Section - Enhanced with more details
+                response += "📊 **Resource Overview:**\n"
+                response += f"• Total Servers: {summary.get('total_servers', 0)}\n"
+                response += f"• Active Servers: {summary.get('active_servers', 0)}\n"
+                response += f"• Total vCPUs Used: {summary.get('total_vcpus_used', 0)}\n"
+                response += f"• Total RAM Used: {summary.get('total_ram_used_gb', 0)} GB\n"
+                response += f"• Total Volumes: {summary.get('total_volumes', 0)}\n"
+                response += f"• Total Storage: {summary.get('total_storage_gb', 0)} GB\n\n"
+                
+                # Compute Quotas Section - Enhanced with percentage used if available
+                response += "💻 **Compute Quotas:**\n"
+                
+                vcpus = quotas.get('vcpus', {})
+                vcpu_used = vcpus.get('used', 0)
+                vcpu_limit = vcpus.get('limit', 'unlimited')
+                if vcpu_limit != 'unlimited' and isinstance(vcpu_limit, (int, float)) and vcpu_limit > 0:
+                    vcpu_percent = (vcpu_used / vcpu_limit) * 100
+                    response += f"• vCPUs: {vcpu_used} used out of {vcpu_limit} ({vcpu_percent:.1f}%)\n"
+                else:
+                    response += f"• vCPUs: {vcpu_used} used out of {vcpu_limit}\n"
+                
+                ram = quotas.get('ram_gb', {})
+                ram_used = ram.get('used', 0)
+                ram_limit = ram.get('limit', 'unlimited')
+                if ram_limit != 'unlimited' and isinstance(ram_limit, (int, float)) and ram_limit > 0:
+                    ram_percent = (ram_used / ram_limit) * 100
+                    response += f"• RAM: {ram_used} GB used out of {ram_limit} GB ({ram_percent:.1f}%)\n"
+                else:
+                    response += f"• RAM: {ram_used} GB used out of {ram_limit} GB\n"
+                
+                instances = quotas.get('instances', {})
+                instances_used = instances.get('used', 0)
+                instances_limit = instances.get('limit', 'unlimited')
+                if instances_limit != 'unlimited' and isinstance(instances_limit, (int, float)) and instances_limit > 0:
+                    instances_percent = (instances_used / instances_limit) * 100
+                    response += f"• Instances: {instances_used} used out of {instances_limit} ({instances_percent:.1f}%)\n\n"
+                else:
+                    response += f"• Instances: {instances_used} used out of {instances_limit}\n\n"
+                
+                # Detailed Server Section - Enhanced with more server details
+                if servers:
+                    response += "🖥️ **Server Details:**\n"
+                    for i, server in enumerate(servers):
+                        server_name = server.get('name', 'unknown')
+                        server_id = server.get('id', 'unknown')
+                        server_status = server.get('status', 'unknown')
+                        server_flavor = server.get('flavor', 'unknown')
+                        server_created = server.get('created', 'unknown')
+                        
+                        response += f"• Server #{i+1}: {server_name}\n"
+                        response += f"  - ID: {server_id}\n"
+                        response += f"  - Status: {server_status}\n"
+                        response += f"  - Flavor: {server_flavor}\n"
+                        response += f"  - Created: {server_created}\n"
+                        
+                        # Add a separator between servers except for the last one
+                        if i < len(servers) - 1:
+                            response += "  ---\n"
+                
+                # Detailed Volume Section - Enhanced with more volume details and status indicators
+                if volumes:
+                    response += "\n💾 **Volume Details:**\n"
+                    for i, volume in enumerate(volumes):
+                        volume_name = volume.get('name', 'unknown')
+                        volume_id = volume.get('id', 'unknown')
+                        volume_size = volume.get('size_gb', 0)
+                        volume_status = volume.get('status', 'unknown')
+                        
+                        # Status indicator
+                        status_indicator = "🟢" if volume_status.lower() == "available" else "🔴" if volume_status.lower() == "error" else "🟡"
+                        
+                        response += f"• Volume #{i+1}: {volume_name} {status_indicator}\n"
+                        response += f"  - ID: {volume_id}\n"
+                        response += f"  - Size: {volume_size} GB\n"
+                        response += f"  - Status: {volume_status}\n"
+                        
+                        # Show attachment information if available
+                        attachments = volume.get('attached_to', [])
+                        if attachments:
+                            response += f"  - Attached to: {', '.join(attachments)}\n"
+                        else:
+                            response += f"  - Not attached\n"
+                            
+                        # Add a separator between volumes except for the last one
+                        if i < len(volumes) - 1:
+                            response += "  ---\n"
+                
+                response += "\n_Note: This is a snapshot of your current usage. Actual resources may vary as instances are created or deleted._"
+                
+                return response
             else:
                 return f"Operation completed: {result}"
